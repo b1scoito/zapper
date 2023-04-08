@@ -14,7 +14,7 @@ RUN go mod download
 COPY *.go ./
 
 # Build
-RUN GOOS=linux go build -ldflags "-s -w" -o /zapper
+RUN GOOS=linux go build -o /zapper
 
 # Run
 ENTRYPOINT ["/zapper"]

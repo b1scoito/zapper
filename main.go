@@ -7,7 +7,9 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -35,40 +37,59 @@ func (cli *RedirectMessages) unregisterEvents() {
 }
 
 func (cli *RedirectMessages) sendMessages(v *events.Message) {
+	var waitGroup sync.WaitGroup
+
 	for _, group := range cli.groupsToSend {
 		// Check if group is not the same as the one that sent the message
 		if v.Info.Chat.User != group {
-			// TODO: Support sending to users too
-			go cli.WMClient.SendMessage(context.Background(), types.NewJID(group, types.GroupServer), v.Message)
+			waitGroup.Add(1)
+
+			go func(group string) {
+				defer waitGroup.Done()
+
+				cli.WMClient.SendMessage(context.Background(), types.NewJID(group, types.GroupServer), v.Message)
+			}(group)
 		}
 	}
+
+	waitGroup.Wait()
 }
 
 func (cli *RedirectMessages) eventHandler(evt interface{}) {
 	switch v := evt.(type) {
 	case *events.Message:
+		var waitGroup sync.WaitGroup
+
 		for _, group := range cli.groupsToReceive {
 			if v.Info.Chat.User == group {
-				cli.sendMessages(v)
+				waitGroup.Add(1)
+
+				go func() {
+					defer waitGroup.Done()
+
+					cli.sendMessages(v)
+				}()
 			}
 		}
+
+		waitGroup.Wait()
 	}
 }
 
 func main() {
+	// Use all CPU cores for parallelism
+	runtime.GOMAXPROCS(runtime.NumCPU())
+
 	var groupsSend string
 	var groupsReceive string
 
-	// 120363122182986428
 	flag.StringVar(&groupsSend, "sends", "", "List of groups to send messages to, separated by a comma. (e.g. 120363122182986428,120363120553285556)")
-
-	// 120363120553285556
 	flag.StringVar(&groupsReceive, "receives", "", "List of groups to receive messages from, separated by a comma. (e.g. 120363122182986428,120363120553285556)")
 	flag.Parse()
 
 	// If argument is null, exit
 	if len(groupsSend) <= 0 || len(groupsReceive) <= 0 {
-		fmt.Printf("Usage: %s -sends 120363122182986428 -receives 120363120553285556\n", filepath.Base(os.Args[0]))
+		fmt.Printf("Usage: %s -sends (jid,jid) -receives (jid,jid)\n", filepath.Base(os.Args[0]))
 		flag.PrintDefaults()
 		os.Exit(0)
 	}
@@ -79,11 +100,13 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
 	// If you want multiple sessions, remember their JIDs and use .GetDevice(jid) or .GetAllDevices() instead.
 	deviceStore, err := container.GetFirstDevice()
 	if err != nil {
 		panic(err)
 	}
+
 	clientLog := waLog.Stdout("Client", "INFO", true)
 	client := whatsmeow.NewClient(deviceStore, clientLog)
 
@@ -94,16 +117,17 @@ func main() {
 
 	if client.Store.ID == nil {
 		// No ID stored, new login
-		qrChan, _ := client.GetQRChannel(context.Background())
-		err = client.Connect()
+		qrChan, err := client.GetQRChannel(context.Background())
 		if err != nil {
 			panic(err)
 		}
+
+		if err = client.Connect(); err != nil {
+			panic(err)
+		}
+
 		for evt := range qrChan {
 			if evt.Event == "code" {
-				// Render the QR code here
-				// e.g. qrterminal.GenerateHalfBlock(evt.Code, qrterminal.L, os.Stdout)
-				// or just manually `echo 2@... | qrencode -t ansiutf8` in a terminal
 				fmt.Println("QR code:", evt.Code)
 				qrterminal.GenerateHalfBlock(evt.Code, qrterminal.L, os.Stdout)
 			} else {
@@ -112,11 +136,22 @@ func main() {
 		}
 	} else {
 		// Already logged in, just connect
-		err = client.Connect()
-		if err != nil {
+		if err = client.Connect(); err != nil {
 			panic(err)
 		}
 	}
+
+	// List all joined groups and their respective JIDs
+	groups, err := client.GetJoinedGroups()
+	if err != nil {
+		panic(err)
+	}
+
+	for _, group := range groups {
+		fmt.Printf("Group: %s ID: %s\n", group.Name, group.JID.User)
+	}
+
+	fmt.Println("Running... (Press Ctrl+C to exit")
 
 	// Listen to Ctrl+C (you can also do something else that prevents the program from exiting)
 	c := make(chan os.Signal, 1)
