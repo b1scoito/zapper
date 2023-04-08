@@ -4,5 +4,5 @@ services:
         build: .
         command: -sends=120363122182986428,120363125110200632,120363123757981832,120363109106800775 -receives=120363120553285556
         volumes:
-            - './db:/app'
+            - './:/app'
         image: zapper
