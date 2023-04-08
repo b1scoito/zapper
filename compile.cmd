@@ -1,17 +1,10 @@
 @echo off
+
 :: https://go.dev/doc/install/source#environment
+set GOOS=windows
+set GOARCH=amd64
 
-set /p TARGET_OS=Target OS: 
+:: Strip debug info and run garble
+garble -literals -tiny -seed=random build -ldflags "-s -w" plow/zapper
 
-set GOOS=%TARGET_OS%
-
-set /p TARGET_ARCH=Target Architecture: 
-set GOARCH=%TARGET_ARCH%
-
-:: Strip debug info
-go build -ldflags "-s -w" plow/zapper
-
-:: Run garble?
-
-pause
 exit /b 0
