@@ -11,16 +11,12 @@ zapper -sends (jid's, separated by comma) -receives (jid's)
 with docker
 
 ```bash
-docker run -it zapper -sends (jid's, separated by comma) -receives (jid's)
+docker-compose up
+# running in the background
+docker-compose up -d
 ```
 
 ## building
-
-with docker
-
-```bash
-docker build -t zapper .
-```
 
 with garble
 
