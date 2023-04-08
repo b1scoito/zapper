@@ -38,6 +38,7 @@ func (cli *RedirectMessages) sendMessages(v *events.Message) {
 	for _, group := range cli.groupsToSend {
 		// Check if group is not the same as the one that sent the message
 		if v.Info.Chat.User != group {
+			// TODO: Support sending to users too
 			go cli.WMClient.SendMessage(context.Background(), types.NewJID(group, types.GroupServer), v.Message)
 		}
 	}
